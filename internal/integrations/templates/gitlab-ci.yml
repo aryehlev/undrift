@@ -1,0 +1,20 @@
+# Include from .gitlab-ci.yml:  include: { local: undrift.gitlab-ci.yml }
+# and schedule it under CI/CD → Schedules. Pull request creation is
+# GitHub-only today, so set `pull_requests.provider: none` in undrift.yaml:
+# Undrift then pushes verified synchronization branches for review and keeps
+# its ledger on the state branch. The job needs a token with push access
+# configured for the git remote.
+undrift:
+  image: golang:1.22
+  resource_group: undrift
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web"
+  script:
+    - go install github.com/aryehlev/undrift/cmd/undrift@latest
+    - git config user.name undrift && git config user.email undrift@localhost
+    - undrift state pull
+    - undrift run --agent {{agent}} --format json || test $? -eq 3
+    - undrift state push
+    - undrift report > undrift-report.md
+  artifacts:
+    paths: [undrift-report.md]

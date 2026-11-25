@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "undrift": {
+      "command": "undrift",
+      "args": ["mcp"]
+    }
+  }
+}

@@ -1,0 +1,141 @@
+name: Undrift
+description: Keep an independently evolving implementation in sync with its upstream project.
+author: Undrift contributors
+branding:
+  icon: refresh-cw
+  color: blue
+
+inputs:
+  agent:
+    description: Agent adapter (claude, codex, gemini, opencode, or one defined in undrift.yaml)
+    default: claude
+  analyze-agent:
+    description: Agent for semantic analysis (default analysis.agent from undrift.yaml, else heuristic)
+    default: ""
+  max-changes:
+    description: Maximum upstream changes to process in this run
+    default: "10"
+  parallel:
+    description: Parallel tasks (default agent.max_parallel_tasks)
+    default: ""
+  max-cost:
+    description: Stop after spending this many USD on agents (when the agent reports cost)
+    default: ""
+  github-token:
+    description: Token used to push branches and open pull requests
+    default: ${{ github.token }}
+  install-agent:
+    description: Install the agent CLI with npm before running
+    default: "true"
+  state-branch:
+    description: Persist the ledger on the state branch between runs
+    default: "true"
+  accept-rewrite:
+    description: Reconcile a rewritten upstream history instead of stopping
+    default: "false"
+  working-directory:
+    description: Directory containing undrift.yaml
+    default: "."
+
+outputs:
+  exit-code:
+    description: Exit code of `undrift run` (0 ok, 3 nothing to do, 4 verification failed, 6 needs review)
+    value: ${{ steps.run.outputs.exit-code }}
+  report:
+    description: Path to the Markdown synchronization report
+    value: ${{ steps.report.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: "1.22"
+        cache-dependency-path: ${{ github.action_path }}/go.sum
+
+    - name: Build undrift
+      shell: bash
+      run: |
+        cd "$GITHUB_ACTION_PATH"
+        go build -o "$RUNNER_TEMP/undrift-bin/undrift" ./cmd/undrift
+        echo "$RUNNER_TEMP/undrift-bin" >> "$GITHUB_PATH"
+
+    - name: Install agent CLI
+      if: inputs.install-agent == 'true'
+      shell: bash
+      env:
+        AGENT: ${{ inputs.agent }}
+      run: |
+        case "$AGENT" in
+          claude)   npm install -g @anthropic-ai/claude-code ;;
+          codex)    npm install -g @openai/codex ;;
+          gemini)   npm install -g @google/gemini-cli ;;
+          opencode) npm install -g opencode-ai ;;
+          *) echo "custom agent '$AGENT': install it in an earlier step" ;;
+        esac
+
+    - name: Configure git identity
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        git config user.name  >/dev/null || git config user.name  "undrift[bot]"
+        git config user.email >/dev/null || git config user.email "undrift[bot]@users.noreply.github.com"
+
+    - name: Restore state
+      if: inputs.state-branch == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: undrift state pull
+
+    - name: Run Undrift
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        UNDRIFT_WORKER: gha-${{ github.run_id }}-${{ github.run_attempt }}
+        AGENT: ${{ inputs.agent }}
+        ANALYZE_AGENT: ${{ inputs.analyze-agent }}
+        MAX_CHANGES: ${{ inputs.max-changes }}
+        PARALLEL: ${{ inputs.parallel }}
+        MAX_COST: ${{ inputs.max-cost }}
+        ACCEPT_REWRITE: ${{ inputs.accept-rewrite }}
+      run: |
+        args=(run --agent "$AGENT" --max-changes "$MAX_CHANGES")
+        [ -n "$ANALYZE_AGENT" ] && args+=(--analyze-agent "$ANALYZE_AGENT")
+        [ -n "$PARALLEL" ] && args+=(--parallel "$PARALLEL")
+        [ -n "$MAX_COST" ] && args+=(--max-cost "$MAX_COST")
+        [ "$ACCEPT_REWRITE" = "true" ] && args+=(--accept-rewrite)
+        set +e
+        undrift "${args[@]}"
+        code=$?
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+
+    - name: Persist state
+      if: always() && inputs.state-branch == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: undrift state push
+
+    - name: Report
+      id: report
+      if: always()
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        undrift report --output "$RUNNER_TEMP/undrift-report.md"
+        cat "$RUNNER_TEMP/undrift-report.md" >> "$GITHUB_STEP_SUMMARY"
+        echo "path=$RUNNER_TEMP/undrift-report.md" >> "$GITHUB_OUTPUT"
+
+    - name: Check result
+      shell: bash
+      env:
+        CODE: ${{ steps.run.outputs.exit-code }}
+      run: |
+        case "$CODE" in
+          0|3|6) exit 0 ;;   # ok, nothing to do, waiting for human review
+          *) echo "::error::undrift run exited with code $CODE"; exit "$CODE" ;;
+        esac

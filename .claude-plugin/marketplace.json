@@ -1,0 +1,11 @@
+{
+  "name": "undrift",
+  "owner": { "name": "Undrift contributors" },
+  "plugins": [
+    {
+      "name": "undrift",
+      "source": "./plugins/claude-code",
+      "description": "Keep a port or fork in sync with its upstream project: discover upstream changes, implement them, verify and open pull requests with Undrift."
+    }
+  ]
+}

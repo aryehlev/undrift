@@ -1,0 +1,6 @@
+{
+  "name": "undrift",
+  "version": "0.1.0",
+  "description": "Undrift synchronization workflow for Claude Code: skill plus MCP tools (requires the undrift binary on PATH).",
+  "license": "Apache-2.0"
+}

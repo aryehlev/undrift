@@ -1,0 +1,30 @@
+name: Undrift
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      max-changes:
+        description: Maximum upstream changes to process
+        default: "10"
+concurrency:
+  group: undrift
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: aryehlev/undrift@main
+        with:
+          agent: {{agent}}
+          max-changes: ${{ inputs.max-changes || '10' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+{{secret_env}}

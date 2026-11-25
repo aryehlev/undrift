@@ -1,0 +1,135 @@
+# Annotated Undrift configuration. Every field is optional except
+# upstream.repository; the values shown are the defaults unless noted.
+version: 1
+
+upstream:
+  repository: https://github.com/org/original   # URL or local path
+  branch: main
+  baseline: abc123          # upstream revision the port currently matches
+  include: []               # only track changes touching these globs
+  exclude: [".github/**"]   # ignore these files when judging applicability (example)
+  ignore_authors: ["dependabot[bot]"]            # example
+  ignore_messages: ["^chore\\(release\\)"]        # regexes (example)
+  on_rewrite: stop          # stop | reconcile  — on upstream force-push
+  github_api: auto          # auto | always | never — fetch PR title/body/labels
+
+# Several upstreams can be tracked at once:
+# upstreams:
+#   - name: core
+#     repository: https://github.com/org/core
+#   - name: plugins
+#     repository: https://github.com/org/plugins
+
+downstream:
+  branch: main
+  remote: origin
+  # repository: owner/name   # for PRs; derived from the remote URL by default
+
+agent:
+  provider: claude          # claude | codex | gemini | opencode | <custom>
+  model: ""                 # passed as --model when set
+  max_attempts: 3
+  max_parallel_tasks: 3     # default 1
+  timeout: 30m
+  env: []                   # extra env var names forwarded to agents
+
+# Custom or overridden agent adapters. Placeholders: {{prompt}},
+# {{prompt_file}}, {{task_file}}, {{result_file}}, {{workdir}}, {{model}},
+# {{model_args}}, {{mode}}.
+agents:
+  aider:
+    command: aider
+    args: ["--yes-always", "--message-file", "{{prompt_file}}"]
+    prompt: none
+    env: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
+
+analysis:
+  agent: ""                 # e.g. claude for semantic analysis; empty = heuristic
+  min_confidence: 0.6       # below this, would-be skips go to human review
+
+sync:                       # which classes of change to synchronize
+  security_fixes: true
+  bug_fixes: true
+  features: true
+  performance: true
+  breaking_changes: true
+  refactoring: false
+  dependencies: false
+  tests: true
+  documentation: false
+  preserve_architecture: true
+
+planner:
+  group_dependent: false    # merge dependent chains into one task/PR
+  max_group_size: 5
+  stack: true               # build on an unmerged dependency's branch
+
+verification:
+  commands:                 # strings, or {name, run, level, timeout}
+    - cargo fmt --check
+    - cargo build --locked
+    - cargo clippy
+    - cargo test --locked
+    - name: integration
+      run: ./scripts/integration.sh
+      level: test           # build | lint | test (inferred when omitted)
+  timeout: 20m
+  allow_partial: true       # partially verified work proceeds as a draft PR
+  env: []                   # extra env var names forwarded to checks
+  regression:
+    enabled: true           # new tests must fail on the base revision
+    commands: []            # default: test-level commands
+  differential:             # requires security.allow_upstream_execution
+    command: ./scripts/compare.sh   # gets UNDRIFT_UPSTREAM_DIR / UNDRIFT_DOWNSTREAM_DIR
+    cases:
+      - name: auction-basic
+        upstream: go run ./cmd/auction < /dev/stdin
+        downstream: cargo run -q --bin auction
+        input: testdata/auction-basic.json
+    normalize:
+      ignore_keys: [request_id, timestamp]
+      ignore_pattern: ["\\d{4}-\\d{2}-\\d{2}T[0-9:.]+Z"]
+      sort_arrays: true
+  performance:
+    command: ./scripts/benchmark.sh # JSON {"metric": n} or "metric value" lines
+    max_regression_percent: 5
+    higher_is_better: [throughput]
+
+rules:
+  - Preserve existing performance optimizations
+  - Avoid unnecessary memory allocations
+  - Maintain upstream API compatibility
+  - Respect intentional architectural deviations
+
+pull_requests:
+  auto_create: true
+  auto_merge: false
+  provider: github          # github | none (push branches only)
+  push: true
+  draft_on_partial: true
+  title_prefix: "[Undrift]"
+  branch_prefix: undrift/
+  labels: [undrift]
+
+watch:
+  interval: 1h
+
+limits:
+  max_changes_per_run: 10
+  max_attempts_per_change: 3
+  max_cost_usd: 25          # default 0 = unlimited
+
+state:
+  branch: undrift/state     # used by `undrift state pull/push`
+  lease: local              # local | git (refs on the remote; multi-machine safe)
+  lease_duration: 45m
+
+security:
+  sandbox: []               # e.g. ["firejail", "--quiet", "--net=none"]
+  allow_upstream_execution: false
+
+context:
+  max_diff_bytes: 200000
+  max_file_bytes: 60000
+  max_files: 25
+  upstream_checkout: true   # read-only upstream worktree for agents
