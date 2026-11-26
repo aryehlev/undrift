@@ -648,3 +648,34 @@ func TestCrashRecoveryViaExpiredLease(t *testing.T) {
 		t.Fatalf("recovery sync: %+v %v", sr, err)
 	}
 }
+
+func renderPrompt(c *tasks.Contract) string { return tasks.RenderPrompt(c) }
+
+func TestProviderAutoDetection(t *testing.T) {
+	ctx := context.Background()
+	f := setup(t, "")
+	e := f.e
+	e.SetProvider(nil)
+	e.Cfg.PullRequests.Provider = "auto"
+	t.Setenv("GITHUB_ACTIONS", "")
+	t.Setenv("GITLAB_CI", "")
+	if _, err := e.ProviderKind(ctx); err == nil {
+		t.Fatal("a local-path remote should not be auto-detected")
+	}
+	run(t, f.downstream, "git", "remote", "set-url", "origin", "https://gitlab.example.com/group/sub/port.git")
+	t.Setenv("GITLAB_TOKEN", "glpat-x")
+	p, err := e.Provider(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gl, ok := p.(*pullrequest.GitLab)
+	if !ok || gl.Project != "group/sub/port" || gl.APIURL != "https://gitlab.example.com/api/v4" {
+		t.Fatalf("provider %#v", p)
+	}
+	e.SetProvider(nil)
+	run(t, f.downstream, "git", "remote", "set-url", "origin", "git@github.com:org/port.git")
+	t.Setenv("GITHUB_TOKEN", "ghs_x")
+	if p, err := e.Provider(ctx); err != nil || p.(*pullrequest.GitHub).Repo != "org/port" {
+		t.Fatalf("github provider %#v %v", p, err)
+	}
+}

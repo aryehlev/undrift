@@ -1,10 +1,13 @@
 // Package mapping resolves upstream changes to downstream components using
 // the semantic mappings stored in project memory, and proposes heuristic
-// mappings for unmapped files.
+// mappings for unmapped code.
 //
-// The MVP relies on stored mappings plus lightweight name similarity. The
-// Resolver interface is the extension point for Tree-sitter, language
-// servers or symbol indexes later.
+// Resolution is symbol-aware when Tree-sitter analysis is available: a
+// mapping for "auction/auction.go#RunAuction" applies only to changes that
+// touch RunAuction, and unmapped upstream functions are matched to
+// downstream definitions with equivalent names across naming conventions
+// (RunAuction ↔ run_auction). The Resolver interface is the extension point
+// for language servers or symbol indexes.
 package mapping
 
 import (
@@ -16,7 +19,43 @@ import (
 
 	"github.com/aryehlev/undrift/internal/glob"
 	"github.com/aryehlev/undrift/internal/memory"
+	"github.com/aryehlev/undrift/internal/state"
+	"github.com/aryehlev/undrift/internal/symbols"
 )
+
+// Input is what to resolve: upstream files and, when known, the symbols
+// touched in each.
+type Input struct {
+	Files   []string
+	Symbols map[string]memory.FileSymbols
+}
+
+// InputFor builds an Input from ledger changes.
+func InputFor(changes ...*state.Change) Input {
+	in := Input{Symbols: map[string]memory.FileSymbols{}}
+	seen := map[string]bool{}
+	for _, c := range changes {
+		for _, f := range c.Files {
+			for _, p := range []string{f.Path, f.OldPath} {
+				if p == "" || seen[p] {
+					continue
+				}
+				seen[p] = true
+				in.Files = append(in.Files, p)
+			}
+			if f.Parsed {
+				cur := in.Symbols[f.Path]
+				cur.Parsed = true
+				cur.Names = append(cur.Names, f.Symbols...)
+				in.Symbols[f.Path] = cur
+			}
+		}
+	}
+	return in
+}
+
+// Files is shorthand for an Input without symbol information.
+func Files(files []string) Input { return Input{Files: files} }
 
 // Resolution describes how a set of upstream files maps downstream.
 type Resolution struct {
@@ -28,9 +67,9 @@ type Resolution struct {
 	Suggestions []memory.Mapping `json:"suggestions,omitempty"`
 }
 
-// Resolver maps upstream files to downstream components.
+// Resolver maps upstream code to downstream components.
 type Resolver interface {
-	Resolve(files []string) Resolution
+	Resolve(in Input) Resolution
 }
 
 // Engine is the default Resolver backed by memory plus heuristics.
@@ -41,21 +80,24 @@ type Engine struct {
 	// Exclude lists downstream paths never suggested.
 	Exclude []string
 
-	index []string // downstream file list (lazy)
+	index    []string            // downstream file list (lazy)
+	symIndex map[string][]symRef // normalized name → downstream definitions (lazy)
+}
+
+type symRef struct {
+	path, qualified string
 }
 
 // Resolve implements Resolver.
-func (e *Engine) Resolve(files []string) Resolution {
+func (e *Engine) Resolve(in Input) Resolution {
 	var r Resolution
 	seenDown := map[string]bool{}
 	seenMap := map[string]bool{}
-	for _, f := range files {
-		ms := e.Mem.MappingsFor([]string{f})
+	for _, f := range in.Files {
+		ms := e.Mem.MappingsForSymbols([]string{f}, in.Symbols)
 		if len(ms) == 0 {
 			r.Unmapped = append(r.Unmapped, f)
-			if s, ok := e.Suggest(f); ok {
-				r.Suggestions = append(r.Suggestions, s)
-			}
+			r.Suggestions = append(r.Suggestions, e.suggestFor(f, in.Symbols[f])...)
 			continue
 		}
 		allUnsupported := true
@@ -86,6 +128,18 @@ func (e *Engine) Resolve(files []string) Resolution {
 	return r
 }
 
+func (e *Engine) suggestFor(f string, fs memory.FileSymbols) []memory.Mapping {
+	if fs.Parsed && len(fs.Names) > 0 {
+		if out := e.SuggestSymbols(f, fs.Names); len(out) > 0 {
+			return out
+		}
+	}
+	if s, ok := e.Suggest(f); ok {
+		return []memory.Mapping{s}
+	}
+	return nil
+}
+
 // Suggest proposes a downstream counterpart for an upstream file using name
 // similarity (same stem, related directory). Returns false if nothing
 // plausible exists.
@@ -93,23 +147,17 @@ func (e *Engine) Suggest(upFile string) (memory.Mapping, bool) {
 	if e.Root == "" {
 		return memory.Mapping{}, false
 	}
-	idx := e.files()
 	stem := normalizeStem(upFile)
 	if stem == "" {
 		return memory.Mapping{}, false
 	}
 	upDirs := dirTokens(upFile)
 	best, bestScore := "", 0
-	for _, f := range idx {
+	for _, f := range e.files() {
 		if normalizeStem(f) != stem {
 			continue
 		}
-		score := 2
-		for d := range dirTokens(f) {
-			if upDirs[d] {
-				score++
-			}
-		}
+		score := 2 + overlap(upDirs, dirTokens(f))
 		if score > bestScore {
 			best, bestScore = f, score
 		}
@@ -130,6 +178,95 @@ func (e *Engine) Suggest(upFile string) (memory.Mapping, bool) {
 		Source:     "heuristic",
 		Notes:      "suggested by file-name similarity; verify before relying on it",
 	}, true
+}
+
+// genericNames are too common to suggest mappings from.
+var genericNames = map[string]bool{
+	"new": true, "string": true, "init": true, "main": true, "test": true, "setup": true, "teardown": true,
+	"close": true, "open": true, "read": true, "write": true, "reset": true, "handle": true, "handler": true,
+	"error": true, "value": true, "values": true, "parse": true, "update": true, "create": true, "delete": true,
+	"apply": true, "build": true, "start": true, "stop": true, "next": true, "len": true, "equals": true,
+	"hashcode": true, "tostring": true, "default": true, "clone": true, "drop": true, "from": true, "into": true,
+	"config": true, "options": true, "client": true, "server": true, "request": true, "response": true,
+}
+
+// SuggestSymbols proposes function-level mappings for touched upstream
+// symbols by matching normalized names against downstream definitions.
+func (e *Engine) SuggestSymbols(upFile string, names []string) []memory.Mapping {
+	if e.Root == "" || !symbols.Available() {
+		return nil
+	}
+	idx := e.symbolIndex()
+	upDirs := dirTokens(upFile)
+	var out []memory.Mapping
+	seen := map[string]bool{}
+	for _, n := range names {
+		key := symbols.Normalize(n)
+		if len(key) < 4 || genericNames[key] || seen[key] {
+			continue
+		}
+		seen[key] = true
+		cands := idx[key]
+		if len(cands) == 0 || len(cands) > 3 {
+			continue // none, or too ambiguous to guess
+		}
+		best, bestScore := cands[0], -1
+		for _, c := range cands {
+			if s := overlap(upDirs, dirTokens(c.path)) + boolInt(normalizeStem(c.path) == normalizeStem(upFile)); s > bestScore {
+				best, bestScore = c, s
+			}
+		}
+		conf := 0.5
+		if bestScore > 0 {
+			conf = 0.65
+		}
+		out = append(out, memory.Mapping{
+			Kind:       memory.KindFunction,
+			Upstream:   memory.StringList{upFile + "#" + n},
+			Downstream: memory.StringList{best.path + "#" + best.qualified},
+			Status:     memory.MappingMapped,
+			Confidence: conf,
+			Source:     "heuristic",
+			Notes:      "suggested by symbol-name similarity; verify before relying on it",
+		})
+	}
+	return out
+}
+
+const (
+	maxIndexFiles     = 4000
+	maxIndexFileBytes = 512 << 10
+)
+
+func (e *Engine) symbolIndex() map[string][]symRef {
+	if e.symIndex != nil {
+		return e.symIndex
+	}
+	e.symIndex = map[string][]symRef{}
+	n := 0
+	for _, f := range e.files() {
+		if !symbols.Supported(f) || n >= maxIndexFiles {
+			continue
+		}
+		p := filepath.Join(e.Root, filepath.FromSlash(f))
+		if st, err := os.Stat(p); err != nil || st.Size() > maxIndexFileBytes {
+			continue
+		}
+		src, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		n++
+		syms, err := symbols.Extract(f, src)
+		if err != nil {
+			continue
+		}
+		for _, s := range syms {
+			k := symbols.Normalize(s.Name)
+			e.symIndex[k] = append(e.symIndex[k], symRef{path: f, qualified: s.Qualified()})
+		}
+	}
+	return e.symIndex
 }
 
 var testSuffixes = []string{"_test", ".test", "_spec", ".spec", "test_"}
@@ -162,6 +299,23 @@ func dirTokens(p string) map[string]bool {
 		out[d] = true
 	}
 	return out
+}
+
+func overlap(a, b map[string]bool) int {
+	n := 0
+	for d := range b {
+		if a[d] {
+			n++
+		}
+	}
+	return n
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 var skipDirs = map[string]bool{

@@ -13,6 +13,7 @@ import (
 	"github.com/aryehlev/undrift/internal/mapping"
 	"github.com/aryehlev/undrift/internal/memory"
 	"github.com/aryehlev/undrift/internal/state"
+	"github.com/aryehlev/undrift/internal/symbols"
 	"github.com/aryehlev/undrift/internal/tasks"
 	"github.com/aryehlev/undrift/internal/upstream"
 	"github.com/aryehlev/undrift/internal/workspace"
@@ -85,10 +86,12 @@ func (e *Engine) BuildContract(ctx context.Context, t *state.Task) (*tasks.Contr
 	}
 
 	var upFiles []string
+	var active []*state.Change
 	for _, ch := range changes {
 		if ch.Status.Settled() {
 			continue
 		}
+		active = append(active, ch)
 		cc, err := e.changeContext(ctx, ch)
 		if err != nil {
 			return nil, err
@@ -124,14 +127,15 @@ func (e *Engine) BuildContract(ctx context.Context, t *state.Task) (*tasks.Contr
 	}
 
 	resolver := &mapping.Engine{Mem: mem, Root: firstNonEmpty(t.Worktree, e.Cfg.Root), Exclude: []string{".undrift/**"}}
-	res := resolver.Resolve(dedupe(upFiles))
+	res := resolver.Resolve(mapping.InputFor(active...))
 	c.Mappings = res.Mappings
 	c.SuggestedMappings = res.Suggestions
 	c.UnmappedFiles = res.Unmapped
-	downFiles := e.expandDownstream(firstNonEmpty(t.Worktree, e.Cfg.Root), append(res.Downstream, suggestionPaths(res.Suggestions)...))
+	downTargets := append(res.Downstream, suggestionPaths(res.Suggestions)...)
+	downFiles := e.expandDownstream(firstNonEmpty(t.Worktree, e.Cfg.Root), downTargets)
 	c.Deviations = mem.DeviationsFor(upFiles, downFiles)
 	c.Notes = mem.NotesFor(append(append([]string{}, upFiles...), downFiles...))
-	c.Downstream.Files = e.readFiles(firstNonEmpty(t.Worktree, e.Cfg.Root), downFiles)
+	c.Downstream.Files = e.readFiles(firstNonEmpty(t.Worktree, e.Cfg.Root), downFiles, wantedSymbols(downTargets))
 
 	// Previous decisions on changes touching the same files.
 	if all, err := e.Store.Changes(); err == nil {
@@ -193,6 +197,11 @@ func (e *Engine) changeContext(ctx context.Context, ch *state.Change) (tasks.Cha
 	if err != nil {
 		return cc, err
 	}
+	if !ch.SymbolsAnalyzed {
+		_ = w.AnnotateSymbols(ctx, ch)
+		cc.Files = ch.Files
+	}
+	cc.Symbols = ch.SymbolRefs()
 	diff, truncated, err := w.Diff(ctx, ch, lim.MaxDiffBytes)
 	if err != nil {
 		return cc, err
@@ -207,12 +216,7 @@ func (e *Engine) changeContext(ctx context.Context, ch *state.Change) (tasks.Cha
 		if err != nil || isBinary(data) {
 			continue
 		}
-		fc := tasks.FileContent{Path: f.Path}
-		if len(data) > lim.MaxFileBytes {
-			data, fc.Truncated = data[:lim.MaxFileBytes], true
-		}
-		fc.Content = string(data)
-		cc.UpstreamFiles = append(cc.UpstreamFiles, fc)
+		cc.UpstreamFiles = append(cc.UpstreamFiles, fileContent(f.Path, data, f.Symbols, lim.MaxFileBytes))
 		n++
 	}
 	return cc, nil
@@ -269,7 +273,7 @@ func (e *Engine) expandDownstream(root string, targets []string) []string {
 	return out
 }
 
-func (e *Engine) readFiles(root string, files []string) []tasks.FileContent {
+func (e *Engine) readFiles(root string, files []string, want map[string][]string) []tasks.FileContent {
 	lim := e.Cfg.Context
 	var out []tasks.FileContent
 	for _, f := range files {
@@ -280,12 +284,44 @@ func (e *Engine) readFiles(root string, files []string) []tasks.FileContent {
 		if err != nil || isBinary(data) {
 			continue
 		}
-		fc := tasks.FileContent{Path: f}
-		if len(data) > lim.MaxFileBytes {
-			data, fc.Truncated = data[:lim.MaxFileBytes], true
-		}
+		out = append(out, fileContent(f, data, want[f], lim.MaxFileBytes))
+	}
+	return out
+}
+
+// fileContent includes a whole file when it fits, and otherwise the
+// definitions of interest (via Tree-sitter) instead of a truncated head.
+func fileContent(path string, data []byte, syms []string, max int) tasks.FileContent {
+	fc := tasks.FileContent{Path: path}
+	if len(data) <= max {
 		fc.Content = string(data)
-		out = append(out, fc)
+		return fc
+	}
+	if len(syms) > 0 {
+		if all, err := symbols.Extract(path, data); err == nil {
+			var pick []symbols.Symbol
+			for _, s := range syms {
+				pick = append(pick, symbols.Find(all, s)...)
+			}
+			if len(pick) > 0 {
+				if ex := symbols.Excerpt(data, pick, 3); len(ex) <= max {
+					fc.Content, fc.Excerpt, fc.Symbols = ex, true, syms
+					return fc
+				}
+			}
+		}
+	}
+	fc.Content, fc.Truncated = string(data[:max]), true
+	return fc
+}
+
+// wantedSymbols groups "path#symbol" targets by path.
+func wantedSymbols(targets []string) map[string][]string {
+	out := map[string][]string{}
+	for _, t := range targets {
+		if p, sym, ok := strings.Cut(t, "#"); ok && sym != "" {
+			out[p] = append(out[p], sym)
+		}
 	}
 	return out
 }

@@ -88,7 +88,12 @@ func (e *Engine) Analyze(ctx context.Context, o AnalyzeOptions) (*AnalyzeResult,
 			continue
 		}
 		files := c.Paths()
-		resolution := resolver.Resolve(files)
+		if w, err := e.ensureMirror(ctx, c.Upstream); err == nil {
+			if err := w.AnnotateSymbols(ctx, c); err != nil {
+				c.AddEvent("symbols_failed", err.Error())
+			}
+		}
+		resolution := resolver.Resolve(mapping.InputFor(c))
 		a := analyzer.Heuristic(c, resolution)
 		if ag != nil {
 			e.logf("analyzing %s with %s: %s", c.ID, ag.Name(), firstLine(c.Title))
@@ -113,6 +118,7 @@ func (e *Engine) Analyze(ctx context.Context, o AnalyzeOptions) (*AnalyzeResult,
 			if cur.TaskID != "" && !o.Force {
 				return nil
 			}
+			cur.Files, cur.SymbolsAnalyzed = c.Files, c.SymbolsAnalyzed
 			cur.Analysis = a
 			cur.AddEvent("analyzed", fmt.Sprintf("%s (%.2f) by %s", a.Classification, a.Confidence, a.Analyzer))
 			cur.SetStatus(status, reason)
@@ -164,6 +170,9 @@ func (e *Engine) agentAnalyze(ctx context.Context, ag agents.Agent, c *state.Cha
 	}
 	if c.RevertOf != "" {
 		fmt.Fprintf(&b, "- Reverts upstream commit %s\n", c.RevertOf)
+	}
+	if refs := c.SymbolRefs(); len(refs) > 0 {
+		fmt.Fprintf(&b, "- Definitions touched: %s\n", strings.Join(refs, ", "))
 	}
 	fmt.Fprintf(&b, "\n### Commit message\n\n%s\n", tasks.Fence(c.Message))
 	if c.PRBody != "" {

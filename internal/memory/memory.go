@@ -228,14 +228,56 @@ func matchesAny(patterns []string, files []string) bool {
 }
 
 // MappingsFor returns mappings whose upstream side matches any file.
-func (m *Memory) MappingsFor(files []string) []Mapping {
+func (m *Memory) MappingsFor(files []string) []Mapping { return m.MappingsForSymbols(files, nil) }
+
+// FileSymbols is the symbol-level view of one changed upstream file.
+type FileSymbols struct {
+	Parsed bool
+	Names  []string // qualified names of touched definitions
+}
+
+// MappingsForSymbols returns mappings whose upstream side matches any file.
+// A mapping that names a symbol ("path#Symbol") only matches when that
+// symbol was touched, or when no symbol information exists for the file.
+func (m *Memory) MappingsForSymbols(files []string, syms map[string]FileSymbols) []Mapping {
 	var out []Mapping
 	for _, mp := range m.Mappings {
-		if matchesAny(mp.Upstream, files) {
+		if matchesWithSymbols(mp.Upstream, files, syms) {
 			out = append(out, mp)
 		}
 	}
 	return out
+}
+
+func matchesWithSymbols(patterns, files []string, syms map[string]FileSymbols) bool {
+	for _, p := range patterns {
+		path, sym, _ := strings.Cut(p, "#")
+		for _, f := range files {
+			if !glob.Match(path, f) {
+				continue
+			}
+			if sym == "" {
+				return true
+			}
+			fs, ok := syms[f]
+			if !ok || !fs.Parsed {
+				return true // no symbol data: stay conservative
+			}
+			for _, n := range fs.Names {
+				if n == sym || lastPart(n) == sym {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func lastPart(s string) string {
+	if i := strings.LastIndex(s, "."); i >= 0 {
+		return s[i+1:]
+	}
+	return s
 }
 
 // DeviationsFor returns deviations that touch any of the upstream or

@@ -17,6 +17,7 @@ import (
 	"github.com/aryehlev/undrift/internal/integrations"
 	"github.com/aryehlev/undrift/internal/report"
 	"github.com/aryehlev/undrift/internal/state"
+	"github.com/aryehlev/undrift/internal/symbols"
 	"github.com/aryehlev/undrift/internal/tasks"
 )
 
@@ -54,7 +55,11 @@ func init() {
 	register(command{"agents", "List available agent adapters", "agents", cmdAgents})
 	register(command{"schema", "Print the task, result or analysis schema", "schema task|result|analysis", cmdSchema})
 	register(command{"version", "Print the version", "version", func(context.Context, *App, []string) (*output, error) {
-		return &output{data: map[string]string{"version": Version}, text: "undrift " + Version}, nil
+		sym := "unavailable (built without cgo)"
+		if symbols.Available() {
+			sym = "tree-sitter"
+		}
+		return &output{data: map[string]any{"version": Version, "symbol_analysis": symbols.Available()}, text: "undrift " + Version + "\nsymbol analysis: " + sym}, nil
 	}})
 }
 
@@ -713,7 +718,11 @@ func cmdInspect(ctx context.Context, a *App, args []string) (*output, error) {
 			fmt.Fprintf(&b, "    ... %d more\n", len(c.Files)-10)
 			break
 		}
-		fmt.Fprintf(&b, "    %s %s\n", f.Status, f.Path)
+		fmt.Fprintf(&b, "    %s %s", f.Status, f.Path)
+		if len(f.Symbols) > 0 {
+			fmt.Fprintf(&b, "  [%s]", strings.Join(f.Symbols, ", "))
+		}
+		b.WriteString("\n")
 	}
 	if t := in.Task; t != nil {
 		fmt.Fprintf(&b, "  task:      %s (%s) branch %s, %d attempt(s)\n", t.ID, t.Status, t.Branch, len(t.Attempts))

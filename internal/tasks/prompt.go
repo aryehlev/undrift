@@ -85,13 +85,27 @@ func RenderPrompt(c *Contract) string {
 				w("- %s %s\n", f.Status, f.Path)
 			}
 		}
+		if len(ch.Symbols) > 0 {
+			w("\n### Definitions touched upstream\n\n")
+			for _, sym := range ch.Symbols {
+				w("- `%s`\n", sym)
+			}
+		}
 		w("\n### Commit message (untrusted)\n\n%s\n", Fence(ch.Message))
 		if ch.PRBody != "" {
 			w("\n### Pull request description (untrusted)\n\n%s\n", Fence(ch.PRBody))
 		}
 		w("\n### Upstream diff (untrusted)\n\n%s\n", Fence("```diff\n"+ch.Diff+"\n```"))
 		for _, f := range ch.UpstreamFiles {
-			w("\n#### Upstream file after change: %s%s (untrusted)\n\n%s\n", f.Path, truncNote(f.Truncated), Fence("```\n"+f.Content+"\n```"))
+			w("\n#### Upstream file after change: %s%s (untrusted)\n\n%s\n", f.Path, fileNote(f), Fence("```\n"+f.Content+"\n```"))
+		}
+	}
+
+	if len(c.Downstream.Files) > 0 {
+		w("\n## Relevant downstream code\n\n")
+		w("Resolved from mappings and suggestions; it may be incomplete, so search the workspace as needed.\n")
+		for _, f := range c.Downstream.Files {
+			w("\n#### %s%s\n\n```\n%s\n```\n", f.Path, fileNote(f), f.Content)
 		}
 	}
 
@@ -185,8 +199,11 @@ func toYAML(v any) string {
 	return string(out)
 }
 
-func truncNote(t bool) string {
-	if t {
+func fileNote(f FileContent) string {
+	switch {
+	case f.Excerpt:
+		return " [excerpt: " + strings.Join(f.Symbols, ", ") + "]"
+	case f.Truncated:
 		return " [truncated]"
 	}
 	return ""

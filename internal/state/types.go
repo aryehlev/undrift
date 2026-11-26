@@ -100,6 +100,12 @@ type FileChange struct {
 	Path    string `json:"path"`
 	Status  string `json:"status"` // A, M, D, R
 	OldPath string `json:"old_path,omitempty"`
+	// Symbol analysis (Tree-sitter). Parsed is false when the language is
+	// unsupported or analysis is unavailable; consumers then fall back to
+	// file-level reasoning.
+	Parsed   bool     `json:"parsed,omitempty"`
+	Symbols  []string `json:"symbols,omitempty"`   // qualified names of touched definitions
+	TopLevel bool     `json:"top_level,omitempty"` // lines changed outside any definition
 }
 
 // Analysis is the semantic analysis of a change.
@@ -167,6 +173,8 @@ type Change struct {
 	PatchID      string       `json:"patch_id,omitempty"`
 	IsMerge      bool         `json:"is_merge,omitempty"`
 	RevertOf     string       `json:"revert_of,omitempty"`
+	// SymbolsAnalyzed records that symbol analysis ran for Files.
+	SymbolsAnalyzed bool `json:"symbols_analyzed,omitempty"`
 
 	Status       Status    `json:"status"`
 	StatusReason string    `json:"status_reason,omitempty"`
@@ -212,6 +220,17 @@ func (c *Change) Paths() []string {
 		out = append(out, f.Path)
 		if f.OldPath != "" {
 			out = append(out, f.OldPath)
+		}
+	}
+	return out
+}
+
+// SymbolRefs returns touched symbols as "path#Symbol".
+func (c *Change) SymbolRefs() []string {
+	var out []string
+	for _, f := range c.Files {
+		for _, s := range f.Symbols {
+			out = append(out, f.Path+"#"+s)
 		}
 	}
 	return out

@@ -286,33 +286,3 @@ func ParseRevert(msg string) string {
 	}
 	return ""
 }
-
-// GitHubSlug extracts "owner/repo" from a GitHub URL, or "".
-func GitHubSlug(url string) string {
-	u := strings.TrimSuffix(strings.TrimSpace(url), ".git")
-	for _, p := range []string{"https://github.com/", "http://github.com/", "git@github.com:", "ssh://git@github.com/"} {
-		if strings.HasPrefix(u, p) {
-			s := strings.TrimPrefix(u, p)
-			if parts := strings.Split(s, "/"); len(parts) >= 2 {
-				return parts[0] + "/" + parts[1]
-			}
-		}
-	}
-	return ""
-}
-
-// PRURL returns a browsable pull request URL for GitHub upstreams.
-func PRURL(repo string, n int) string {
-	if slug := GitHubSlug(repo); slug != "" {
-		return fmt.Sprintf("https://github.com/%s/pull/%d", slug, n)
-	}
-	return ""
-}
-
-// CommitURL returns a browsable commit URL for GitHub upstreams.
-func CommitURL(repo, sha string) string {
-	if slug := GitHubSlug(repo); slug != "" {
-		return fmt.Sprintf("https://github.com/%s/commit/%s", slug, sha)
-	}
-	return ""
-}

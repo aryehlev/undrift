@@ -94,12 +94,43 @@ prefix, for example `ANTHROPIC_*`.
 
 ### `pull_requests`
 
-With `provider: github`, Undrift pushes branches and opens PRs using
-`GITHUB_TOKEN` or `GH_TOKEN`. The target repository is `downstream.repository`,
-or is derived from the remote URL. With `provider: none`, verified branches are
-pushed (when `push: true` and a remote exists), and they count as merged once
-the commit reaches `downstream.branch`. `auto_merge` is off by default; when
-it's on, only fully verified, non-draft PRs are merged.
+`provider` can be `auto` (the default), `github`, `gitlab` or `none`. With
+`auto`, Undrift detects the host from the downstream remote URL: `github.com`
+or the GitHub Enterprise server of the current Actions run means GitHub, and
+any host named like GitLab or the instance of the current GitLab CI job means
+GitLab. If the remote doesn't identify the host, set `provider` explicitly.
+
+- **GitHub:** PRs are opened with `GITHUB_TOKEN` or `GH_TOKEN`. For GitHub
+  Enterprise, set `GITHUB_API_URL`.
+- **GitLab:** merge requests are opened with `GITLAB_TOKEN` or `GL_TOKEN`,
+  which needs the `api` scope (`CI_JOB_TOKEN` can't create merge requests).
+  Drafts use the `Draft:` title prefix. The API URL is derived from the remote
+  host; override it with `GITLAB_API_URL`. Self-managed instances work.
+- **none:** verified branches are pushed (when `push: true` and a remote
+  exists), and they count as merged once the commit reaches
+  `downstream.branch`.
+
+The target project is `downstream.repository` (GitHub `owner/name` or a
+GitLab `group/subgroup/project` path), or is derived from the remote URL.
+`auto_merge` is off by default; when it's on, only fully verified, non-draft
+PRs are merged.
+
+### `planner.granularity`
+
+With `file` (the default), any two changes to the same file run in upstream
+order. With `symbol`, they're ordered only when they touch the same function,
+method or type, so unrelated fixes to one large file can run in parallel. A
+change outside every definition (imports, package-level constants), or in a
+language without symbol analysis, still orders against every change to that
+file.
+
+### `upstream.host_api`
+
+With `auto`, Undrift fetches the upstream PR or MR title, description and
+labels when a token is available: `GITHUB_TOKEN` / `GH_TOKEN` for GitHub,
+`GITLAB_TOKEN` for GitLab, or `UNDRIFT_UPSTREAM_TOKEN` for either. Labels
+such as `security` improve classification. `always` fetches without a token
+(public repositories, rate-limited), and `never` disables fetching.
 
 ### `state`
 

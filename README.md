@@ -26,7 +26,7 @@ upstream commits ──► scan ──► analyze ──► plan ──► agent
 ## Highlights
 
 - **Bring your own agent.** Built-in adapters for Claude Code, Codex, Gemini CLI and OpenCode. Any other CLI agent is a few lines of YAML. External agents and loops can drive Undrift themselves through `next / claim / context / verify / complete`, or over MCP.
-- **Any language pair.** Undrift doesn't parse code. Mappings between upstream and downstream functionality are semantic and don't assume matching file names or structure.
+- **Any language pair.** Mappings between upstream and downstream functionality are semantic and don't assume matching file names or structure. Tree-sitter symbol analysis (14 languages) records which functions, methods and types each upstream change touched. That makes `path#Symbol` mappings precise, finds function-level counterparts across naming conventions (`RunAuction` ↔ `run_auction`), and can order work per definition instead of per file. Other languages fall back to file level.
 - **Verification first.** An agent's report is never taken as proof. Undrift re-runs trusted downstream checks: build, existing tests, regression tests (fail before / pass after), differential testing against upstream, and performance thresholds. Results are reported as *verified*, *partially verified* or *unverified*. Partially verified work opens as a draft PR.
 - **Persistent memory.** Mappings, intentional deviations, conventions, rejected changes and past failures are kept in human-readable, version-controlled files and given to every agent.
 - **Architecture preservation.** Recorded deviations (for example "we use `FuturesUnordered` instead of a task per bidder") are injected into every relevant task. Agents are told to port behavior, not implementation.
@@ -39,7 +39,7 @@ upstream commits ──► scan ──► analyze ──► plan ──► agent
 go install github.com/aryehlev/undrift/cmd/undrift@latest
 ```
 
-Requires Go 1.22+ and git. Install the agent CLI you want to use (`claude`, `codex`, `gemini`, `opencode`, ...) separately.
+Requires Go 1.22+, git and a C compiler (for the Tree-sitter grammars). `CGO_ENABLED=0 go install ...` builds without one, but symbol analysis is then off. Install the agent CLI you want to use (`claude`, `codex`, `gemini`, `opencode`, ...) separately.
 
 ## Quick start
 
@@ -57,7 +57,7 @@ undrift analyze            # heuristic; add --agent claude for semantic analysis
 undrift plan
 
 # 3. Let an agent implement, verify and open PRs.
-export GITHUB_TOKEN=...    # to push branches and open PRs
+export GITHUB_TOKEN=...    # to open PRs (GITLAB_TOKEN for GitLab merge requests)
 undrift sync --agent claude
 
 undrift status
@@ -148,7 +148,8 @@ Mappings and notes that agents propose are committed on the PR branch, so they r
 
 - **Claude Code:** run `undrift integrations install claude` to add a project skill. You can also install the plugin, which bundles the skill and the MCP server: `/plugin marketplace add aryehlev/undrift`. For a recurring loop: `/loop 30m Run Undrift, discover upstream changes, implement pending synchronization tasks, verify them, and open pull requests.`
 - **Codex / OpenCode / Gemini:** run `undrift integrations install codex` (or `opencode`, `gemini`) to add an Undrift section to `AGENTS.md` / `GEMINI.md`.
-- **Anything else:** `undrift run` under cron, GitLab CI (`integrations install gitlab-ci`), Jenkins or a Kubernetes CronJob. `undrift watch` loops locally.
+- **GitLab CI:** run `undrift integrations install gitlab-ci`, schedule the job, and set `GITLAB_TOKEN` plus your agent's API key as CI/CD variables. Merge requests are opened on gitlab.com or a self-managed instance.
+- **Anything else:** `undrift run` under cron, Jenkins or a Kubernetes CronJob. `undrift watch` loops locally.
 
 For multiple machines, set `state.lease: git`. Leases then become refs on the downstream remote, updated with compare-and-swap pushes, so workers that share only the git remote never take the same task. Use `undrift state pull` / `undrift state push` to share the ledger through the `undrift/state` branch.
 
@@ -189,7 +190,7 @@ Every command accepts `--format json`. Errors in JSON mode are `{"ok": false, "e
 
 ## Status
 
-This is an early MVP. Mapping relies on stored mappings plus file-name heuristics. Tree-sitter, language-server and symbol-index resolvers can plug into `mapping.Resolver`. Pull request management is GitHub-only today; with other hosts, set `pull_requests.provider: none` and Undrift pushes verified branches for review.
+This is an early MVP. Pull requests are supported on GitHub (including Enterprise) and GitLab (including self-managed). With other hosts, set `pull_requests.provider: none` and Undrift pushes verified branches for review. Symbol analysis uses Tree-sitter. A language-server resolver, for references and types across a whole project, can plug into `mapping.Resolver` later.
 
 ## License
 

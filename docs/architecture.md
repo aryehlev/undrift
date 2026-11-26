@@ -13,7 +13,8 @@ internal/
   git/                 thin git CLI wrapper
   upstream/            upstream mirror, logical-change listing, PR/revert/tag/patch-id extraction
   analyzer/            heuristic classification, agent-analysis contract, sync policy
-  mapping/             resolves upstream files to downstream components (Resolver interface)
+  mapping/             resolves upstream code to downstream components (Resolver interface)
+  symbols/             Tree-sitter definitions, touched-symbol detection, excerpts
   memory/              mappings, deviations, notes (version-controlled YAML)
   planner/             dependency graph, grouping, readiness, stacking
   state/               ledger records, file store, state-branch sync
@@ -21,7 +22,7 @@ internal/
   agents/              command adapters (claude, codex, gemini, opencode, custom)
   verifier/            build/test, regression, differential and performance checks
   workspace/           git worktrees
-  pullrequest/         PR title/body, GitHub provider
+  pullrequest/         PR title/body, GitHub and GitLab providers
   proc/                process execution: timeouts, process groups, env filtering, sandbox
   integrations/        GitHub Actions, GitLab CI, Claude skill, AGENTS.md/GEMINI.md
   report/              Markdown reports
@@ -118,12 +119,41 @@ unreachable records to new commits by patch ID:
   this gives exclusion with nothing shared but the git remote.
 - In GitHub Actions, the workflow's `concurrency` group serializes runs.
 
+## Symbol analysis
+
+When a change is analyzed, Undrift diffs it with zero context lines and
+parses the file before and after the change with Tree-sitter. Each changed
+line is attributed to the innermost definition that contains it, so a change
+inside `Engine.execute` is recorded as `Engine.execute`, not as `Engine`.
+Lines outside every definition mark the file as changed at top level. The
+result is stored on the change (`files[].symbols`) and used to:
+
+- apply `path#Symbol` mappings only to changes that touch that symbol;
+- suggest function-level mappings by matching names across naming
+  conventions (`RunAuction`, `run_auction` and `runAuction` all match) against
+  an index of downstream definitions;
+- give agents only the relevant definitions of files too large to include
+  whole, instead of a truncated head;
+- with `planner.granularity: symbol`, order only changes that touch the same
+  definition.
+
+Grammars are compiled in for Go, Rust, Python, JavaScript, TypeScript/TSX,
+Java, C, C++, C#, Ruby, Kotlin, PHP, Swift and Scala. Other languages fall
+back to file-level behavior. Tree-sitter needs cgo; a `CGO_ENABLED=0` build
+works but leaves symbol analysis off (`undrift version` says which you have).
+
+Tree-sitter comes before language servers on purpose. It needs no build of
+either project, so it works on the bare upstream mirror, and it is fast
+enough to run on every scan. A language server could add references and
+types for deeper dependency planning; it would plug into the same
+`mapping.Resolver` interface as an optional per-language resolver.
+
 ## Extending
 
 - **Agents**: add an `agents:` entry in `undrift.yaml`. No code changes needed.
 - **Mapping resolvers**: implement `mapping.Resolver`, for example with
   Tree-sitter, an LSP or a symbol index.
-- **PR providers**: implement `pullrequest.Provider`, for example for GitLab
-  or Gitea.
+- **PR providers**: implement `pullrequest.Provider`, for example for Gitea,
+  Forgejo or Bitbucket. GitHub and GitLab are built in.
 - **Lease backends**: implement `tasks.LeaseBackend`, for example with etcd,
   Redis or DynamoDB.

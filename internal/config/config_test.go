@@ -72,7 +72,7 @@ func TestParseSpecExample(t *testing.T) {
 		}
 	}
 	// Defaults survive partial documents.
-	if !c.Sync.Tests || c.Sync.Documentation || c.PullRequests.Provider != "github" || c.State.Lease != "local" {
+	if !c.Sync.Tests || c.Sync.Documentation || c.PullRequests.Provider != "auto" || c.State.Lease != "local" {
 		t.Fatalf("defaults lost: %+v %+v", c.Sync, c.PullRequests)
 	}
 	if c.Verification.Performance.MaxRegressionPercent != 5 {

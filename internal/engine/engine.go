@@ -126,31 +126,70 @@ func (e *Engine) UpdateMemory(fn func(*memory.Memory) error) error {
 	return m.Save()
 }
 
-// DownstreamSlug returns "owner/name" for the downstream repository.
+// DownstreamSlug returns "owner/name" (GitHub) or the project path
+// (GitLab) of the downstream repository.
 func (e *Engine) DownstreamSlug(ctx context.Context) string {
 	if e.Cfg.Downstream.Repository != "" {
 		return e.Cfg.Downstream.Repository
 	}
-	if s := upstream.GitHubSlug(e.Repo.RemoteURL(ctx, e.Cfg.Downstream.Remote)); s != "" {
-		return s
+	if r, ok := upstream.ParseRemote(e.Repo.RemoteURL(ctx, e.Cfg.Downstream.Remote)); ok {
+		return r.Slug()
 	}
-	return os.Getenv("GITHUB_REPOSITORY")
+	return firstNonEmpty(os.Getenv("GITHUB_REPOSITORY"), os.Getenv("CI_PROJECT_PATH"))
+}
+
+// ProviderKind resolves pull_requests.provider ("auto" detects the host
+// from the downstream remote, then from the CI environment).
+func (e *Engine) ProviderKind(ctx context.Context) (string, error) {
+	kind := e.Cfg.PullRequests.Provider
+	if kind != "auto" {
+		return kind, nil
+	}
+	remote := e.Repo.RemoteURL(ctx, e.Cfg.Downstream.Remote)
+	if r, ok := upstream.ParseRemote(remote); ok && r.Kind() != "" {
+		return r.Kind(), nil
+	}
+	switch {
+	case os.Getenv("GITHUB_ACTIONS") == "true":
+		return upstream.HostGitHub, nil
+	case os.Getenv("GITLAB_CI") == "true":
+		return upstream.HostGitLab, nil
+	}
+	return "", fmt.Errorf("cannot detect the hosting provider for remote %q; set pull_requests.provider to github, gitlab or none", remote)
 }
 
 // Provider returns the PR provider, or nil if PRs are disabled.
 func (e *Engine) Provider(ctx context.Context) (pullrequest.Provider, error) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if e.provider != nil {
+		defer e.mu.Unlock()
 		return e.provider, nil
 	}
-	if e.Cfg.PullRequests.Provider == "none" {
-		return nil, nil
-	}
-	p, err := pullrequest.NewGitHub(e.DownstreamSlug(ctx))
+	e.mu.Unlock()
+	kind, err := e.ProviderKind(ctx)
 	if err != nil {
 		return nil, err
 	}
+	var p pullrequest.Provider
+	switch kind {
+	case "none":
+		return nil, nil
+	case upstream.HostGitHub:
+		p, err = pullrequest.NewGitHub(e.DownstreamSlug(ctx))
+	case upstream.HostGitLab:
+		api := firstNonEmpty(os.Getenv("GITLAB_API_URL"), os.Getenv("CI_API_V4_URL"))
+		if r, ok := upstream.ParseRemote(e.Repo.RemoteURL(ctx, e.Cfg.Downstream.Remote)); ok {
+			api = r.GitLabAPI()
+		}
+		p, err = pullrequest.NewGitLab(e.DownstreamSlug(ctx), api)
+	default:
+		return nil, fmt.Errorf("unknown pull request provider %q", kind)
+	}
+	if err != nil {
+		return nil, err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.provider = p
 	return p, nil
 }

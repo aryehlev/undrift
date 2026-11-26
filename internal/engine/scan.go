@@ -250,10 +250,10 @@ func (e *Engine) reconcileRewrite(ctx context.Context, w *upstream.Watcher, rw *
 }
 
 func (e *Engine) enrich(ctx context.Context, w *upstream.Watcher, c *state.Change) {
-	if c.PRNumber == 0 || w.Cfg.GitHubAPI == "never" || upstream.GitHubSlug(w.Cfg.Repository) == "" {
+	if c.PRNumber == 0 || w.Cfg.HostAPI == "never" || !upstream.SupportsPRMeta(w.Cfg.Repository) {
 		return
 	}
-	if w.Cfg.GitHubAPI == "auto" && getenvAny("GITHUB_TOKEN", "GH_TOKEN", "UNDRIFT_UPSTREAM_TOKEN") == "" {
+	if w.Cfg.HostAPI == "auto" && !upstream.HasToken(w.Cfg.Repository) {
 		return
 	}
 	pr, err := upstream.FetchPR(ctx, w.Cfg.Repository, c.PRNumber)

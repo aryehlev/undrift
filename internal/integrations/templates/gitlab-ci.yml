@@ -1,20 +1,29 @@
 # Include from .gitlab-ci.yml:  include: { local: undrift.gitlab-ci.yml }
-# and schedule it under CI/CD → Schedules. Pull request creation is
-# GitHub-only today, so set `pull_requests.provider: none` in undrift.yaml:
-# Undrift then pushes verified synchronization branches for review and keeps
-# its ledger on the state branch. The job needs a token with push access
-# configured for the git remote.
+# and schedule it under CI/CD → Schedules.
+#
+# Required CI/CD variables (masked):
+#   GITLAB_TOKEN  a project or bot token with `api` and `write_repository`
+#                 scopes, used to push synchronization branches and open
+#                 merge requests (CI_JOB_TOKEN cannot create MRs)
+#   plus your agent's API key (e.g. ANTHROPIC_API_KEY or OPENAI_API_KEY).
+# The job image must also provide the agent CLI ({{agent}}).
 undrift:
   image: golang:1.22
   resource_group: undrift
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web"
+  variables:
+    GIT_DEPTH: "0"
   script:
     - go install github.com/aryehlev/undrift/cmd/undrift@latest
     - git config user.name undrift && git config user.email undrift@localhost
+    - git remote set-url origin "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - git fetch origin "$CI_DEFAULT_BRANCH"
     - undrift state pull
-    - undrift run --agent {{agent}} --format json || test $? -eq 3
+    - undrift run --agent {{agent}} || { c=$?; [ "$c" -eq 3 ] || [ "$c" -eq 6 ]; }   # 3 = nothing to do, 6 = needs review
     - undrift state push
-    - undrift report > undrift-report.md
+  after_script:
+    - undrift report --output undrift-report.md || true
   artifacts:
+    when: always
     paths: [undrift-report.md]

@@ -11,7 +11,7 @@ upstream:
   ignore_authors: ["dependabot[bot]"]            # example
   ignore_messages: ["^chore\\(release\\)"]        # regexes (example)
   on_rewrite: stop          # stop | reconcile  — on upstream force-push
-  github_api: auto          # auto | always | never — fetch PR title/body/labels
+  host_api: auto            # auto | always | never — fetch PR/MR title, body, labels (GitHub, GitLab)
 
 # Several upstreams can be tracked at once:
 # upstreams:
@@ -23,7 +23,7 @@ upstream:
 downstream:
   branch: main
   remote: origin
-  # repository: owner/name   # for PRs; derived from the remote URL by default
+  # repository: owner/name   # GitHub owner/name or GitLab group/project; derived from the remote URL by default
 
 agent:
   provider: claude          # claude | codex | gemini | opencode | <custom>
@@ -63,6 +63,7 @@ planner:
   group_dependent: false    # merge dependent chains into one task/PR
   max_group_size: 5
   stack: true               # build on an unmerged dependency's branch
+  granularity: file         # file | symbol — order only changes touching the same definition
 
 verification:
   commands:                 # strings, or {name, run, level, timeout}
@@ -104,7 +105,7 @@ rules:
 pull_requests:
   auto_create: true
   auto_merge: false
-  provider: github          # github | none (push branches only)
+  provider: auto            # auto | github | gitlab | none (push branches only)
   push: true
   draft_on_partial: true
   title_prefix: "[Undrift]"

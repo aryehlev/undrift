@@ -59,16 +59,19 @@ type ChangeContext struct {
 	Analysis       *state.Analysis    `json:"analysis,omitempty"`
 	RevertOf       string             `json:"revert_of,omitempty"`
 	Files          []state.FileChange `json:"files"`
-	Diff           string             `json:"diff"` // untrusted
+	Symbols        []string           `json:"symbols,omitempty"` // touched definitions, "path#Symbol"
+	Diff           string             `json:"diff"`              // untrusted
 	DiffTruncated  bool               `json:"diff_truncated,omitempty"`
 	UpstreamFiles  []FileContent      `json:"upstream_files,omitempty"` // untrusted
 }
 
 // FileContent is a source file excerpt.
 type FileContent struct {
-	Path      string `json:"path"`
-	Content   string `json:"content"`
-	Truncated bool   `json:"truncated,omitempty"`
+	Path      string   `json:"path"`
+	Content   string   `json:"content"`
+	Truncated bool     `json:"truncated,omitempty"`
+	Excerpt   bool     `json:"excerpt,omitempty"` // only the listed definitions are included
+	Symbols   []string `json:"symbols,omitempty"`
 }
 
 // DownstreamContext describes the downstream workspace.

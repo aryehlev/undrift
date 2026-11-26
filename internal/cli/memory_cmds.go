@@ -9,6 +9,7 @@ import (
 
 	"github.com/aryehlev/undrift/internal/mapping"
 	"github.com/aryehlev/undrift/internal/memory"
+	"github.com/aryehlev/undrift/internal/state"
 )
 
 func cmdMappings(ctx context.Context, a *App, args []string) (*output, error) {
@@ -78,20 +79,13 @@ func cmdMappings(ctx context.Context, a *App, args []string) (*output, error) {
 		if err != nil {
 			return nil, err
 		}
-		seen := map[string]bool{}
-		var files []string
+		var pending []*state.Change
 		for _, c := range cs {
-			if c.Status.Settled() {
-				continue
-			}
-			for _, f := range c.Files {
-				if f.Status != "D" && !seen[f.Path] {
-					seen[f.Path] = true
-					files = append(files, f.Path)
-				}
+			if !c.Status.Settled() {
+				pending = append(pending, c)
 			}
 		}
-		res := (&mapping.Engine{Mem: mem, Root: e.Cfg.Root, Exclude: []string{".undrift/**"}}).Resolve(files)
+		res := (&mapping.Engine{Mem: mem, Root: e.Cfg.Root, Exclude: []string{".undrift/**"}}).Resolve(mapping.InputFor(pending...))
 		if *save && len(res.Suggestions) > 0 {
 			if err := e.UpdateMemory(func(m *memory.Memory) error {
 				for _, s := range res.Suggestions {
@@ -109,7 +103,7 @@ func cmdMappings(ctx context.Context, a *App, args []string) (*output, error) {
 			for _, u := range res.Unmapped {
 				found := false
 				for _, s := range res.Suggestions {
-					if len(s.Upstream) > 0 && s.Upstream[0] == u {
+					if len(s.Upstream) > 0 && strings.SplitN(s.Upstream[0], "#", 2)[0] == u {
 						found = true
 					}
 				}

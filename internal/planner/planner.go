@@ -72,7 +72,7 @@ func Plan(all []*state.Change, cfg *config.Config) *Result {
 
 	deps := map[string][]string{}
 	for _, c := range candidates {
-		deps[c.ID] = dependencies(c, byUpstream[c.Upstream])
+		deps[c.ID] = dependencies(c, byUpstream[c.Upstream], cfg.Planner.Granularity == "symbol")
 	}
 
 	// Group dependent chains into single tasks when configured.
@@ -160,7 +160,7 @@ func Plan(all []*state.Change, cfg *config.Config) *Result {
 	return res
 }
 
-func dependencies(c *state.Change, history []*state.Change) []string {
+func dependencies(c *state.Change, history []*state.Change, bySymbol bool) []string {
 	seen := map[string]bool{}
 	var out []string
 	add := func(id string) {
@@ -192,6 +192,10 @@ func dependencies(c *state.Change, history []*state.Change) []string {
 			add(h.ID)
 		}
 	}
+	if bySymbol {
+		symbolOverlap(c, history, add)
+		return out
+	}
 	paths := map[string]bool{}
 	for _, p := range c.Paths() {
 		paths[p] = true
@@ -216,6 +220,68 @@ func dependencies(c *state.Change, history []*state.Change) []string {
 		}
 	}
 	return out
+}
+
+// symKey identifies a touched region: a definition in a file, or the whole
+// file (sym == "*") when the change is outside definitions or unparsed.
+type symKey struct{ path, sym string }
+
+func keysOf(c *state.Change) []symKey {
+	var out []symKey
+	for _, f := range c.Files {
+		if f.OldPath != "" {
+			out = append(out, symKey{f.OldPath, "*"})
+		}
+		if !f.Parsed || f.TopLevel || len(f.Symbols) == 0 {
+			out = append(out, symKey{f.Path, "*"})
+			continue
+		}
+		for _, s := range f.Symbols {
+			out = append(out, symKey{f.Path, s})
+		}
+	}
+	return out
+}
+
+func (k symKey) conflicts(o symKey) bool {
+	return k.path == o.path && (k.sym == o.sym || k.sym == "*" || o.sym == "*")
+}
+
+// symbolOverlap orders c after the nearest earlier active change touching
+// the same definition. A whole-file key keeps looking further back (it
+// overlaps every definition), while a definition key is resolved by the
+// nearest change touching that definition or the whole file, which is in
+// turn ordered after everything before it.
+func symbolOverlap(c *state.Change, history []*state.Change, add func(string)) {
+	remaining := keysOf(c)
+	for i := len(history) - 1; i >= 0 && len(remaining) > 0; i-- {
+		h := history[i]
+		if h.Seq >= c.Seq {
+			continue
+		}
+		hk := keysOf(h)
+		hit := false
+		kept := remaining[:0:0]
+		for _, k := range remaining {
+			resolved := false
+			for _, x := range hk {
+				if k.conflicts(x) {
+					hit = true
+					if k.sym != "*" || x.sym == "*" {
+						resolved = true
+					}
+					break
+				}
+			}
+			if !resolved {
+				kept = append(kept, k)
+			}
+		}
+		remaining = kept
+		if hit && active(h.Status) {
+			add(h.ID)
+		}
+	}
 }
 
 // Readiness describes whether a task can start.

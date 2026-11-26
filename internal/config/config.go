@@ -70,9 +70,10 @@ type Upstream struct {
 	// "stop" (default) requires `undrift scan --accept-rewrite`;
 	// "reconcile" handles it automatically.
 	OnRewrite string `yaml:"on_rewrite,omitempty"`
-	// GitHubAPI enables enrichment of changes with pull request metadata
-	// from the GitHub API ("auto", "always", "never").
-	GitHubAPI string `yaml:"github_api,omitempty"`
+	// HostAPI enables enrichment of changes with pull/merge request
+	// metadata (title, description, labels) from the GitHub or GitLab API:
+	// "auto" (when a token is available), "always", "never".
+	HostAPI string `yaml:"host_api,omitempty"`
 }
 
 // Downstream describes the repository Undrift is keeping in sync.
@@ -144,6 +145,11 @@ type Planner struct {
 	MaxGroupSize   int  `yaml:"max_group_size"`
 	// Stack allows a task to build on an unmerged dependency's branch.
 	Stack bool `yaml:"stack"`
+	// Granularity of overlap-based dependencies: "file" (two changes to the
+	// same file are ordered) or "symbol" (only changes touching the same
+	// definition are ordered; needs Tree-sitter support for the language and
+	// falls back to file level otherwise).
+	Granularity string `yaml:"granularity"`
 }
 
 // Command is a verification command. It can be written as a plain string
@@ -259,7 +265,7 @@ type Performance struct {
 type PullRequests struct {
 	AutoCreate     bool     `yaml:"auto_create"`
 	AutoMerge      bool     `yaml:"auto_merge"`
-	Provider       string   `yaml:"provider"` // github | none
+	Provider       string   `yaml:"provider"` // auto | github | gitlab | none
 	Push           bool     `yaml:"push"`
 	DraftOnPartial bool     `yaml:"draft_on_partial"`
 	TitlePrefix    string   `yaml:"title_prefix"`
@@ -331,7 +337,7 @@ func Default() *Config {
 			Documentation:        false,
 			PreserveArchitecture: true,
 		},
-		Planner: Planner{MaxGroupSize: 5, Stack: true},
+		Planner: Planner{MaxGroupSize: 5, Stack: true, Granularity: "file"},
 		Verification: Verification{
 			Timeout:      Duration(20 * time.Minute),
 			Regression:   Regression{Enabled: true},
@@ -341,7 +347,7 @@ func Default() *Config {
 		PullRequests: PullRequests{
 			AutoCreate:     true,
 			AutoMerge:      false,
-			Provider:       "github",
+			Provider:       "auto",
 			Push:           true,
 			DraftOnPartial: true,
 			TitlePrefix:    "[Undrift]",
@@ -462,8 +468,8 @@ func (c *Config) normalize() {
 		if u.OnRewrite == "" {
 			u.OnRewrite = "stop"
 		}
-		if u.GitHubAPI == "" {
-			u.GitHubAPI = "auto"
+		if u.HostAPI == "" {
+			u.HostAPI = "auto"
 		}
 	}
 	if c.Agent.MaxParallelTasks < 1 {
@@ -505,15 +511,20 @@ func (c *Config) Validate() error {
 			errs = append(errs, fmt.Sprintf("upstream %q: on_rewrite must be stop or reconcile", u.Name))
 		}
 	}
+	switch c.Planner.Granularity {
+	case "file", "symbol":
+	default:
+		errs = append(errs, "planner.granularity must be file or symbol")
+	}
 	switch c.State.Lease {
 	case "local", "git":
 	default:
 		errs = append(errs, "state.lease must be local or git")
 	}
 	switch c.PullRequests.Provider {
-	case "github", "none":
+	case "auto", "github", "gitlab", "none":
 	default:
-		errs = append(errs, "pull_requests.provider must be github or none")
+		errs = append(errs, "pull_requests.provider must be auto, github, gitlab or none")
 	}
 	if c.Analysis.MinConfidence < 0 || c.Analysis.MinConfidence > 1 {
 		errs = append(errs, "analysis.min_confidence must be between 0 and 1")

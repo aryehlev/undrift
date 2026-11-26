@@ -76,3 +76,54 @@ func TestReadinessBlockedVsWaiting(t *testing.T) {
 		t.Fatalf("merged dep: %+v", r)
 	}
 }
+
+func withSymbols(c *state.Change, path string, topLevel bool, syms ...string) *state.Change {
+	for i := range c.Files {
+		if c.Files[i].Path == path {
+			c.Files[i].Parsed, c.Files[i].Symbols, c.Files[i].TopLevel = true, syms, topLevel
+		}
+	}
+	return c
+}
+
+func TestSymbolGranularity(t *testing.T) {
+	cfg := config.Default()
+	cfg.Planner.Granularity = "symbol"
+	a := withSymbols(ch("aaaaaaa", 1, state.StatusAnalyzed, "auction.go"), "auction.go", false, "RunAuction")
+	b := withSymbols(ch("bbbbbbb", 2, state.StatusAnalyzed, "auction.go"), "auction.go", false, "scoreBid")
+	c := withSymbols(ch("ccccccc", 3, state.StatusAnalyzed, "auction.go"), "auction.go", false, "RunAuction")
+	d := withSymbols(ch("ddddddd", 4, state.StatusAnalyzed, "auction.go"), "auction.go", true) // imports
+	e := withSymbols(ch("eeeeeee", 5, state.StatusAnalyzed, "auction.go"), "auction.go", false, "scoreBid")
+	r := Plan([]*state.Change{a, b, c, d, e}, cfg)
+	deps := map[string][]string{}
+	for _, t := range r.Tasks {
+		deps[t.Changes[0]] = t.DependsOn
+	}
+	want := map[string][]string{
+		"aaaaaaa": nil,
+		"bbbbbbb": nil,                               // different function: independent
+		"ccccccc": {"aaaaaaa"},                       // same function as a
+		"ddddddd": {"ccccccc", "bbbbbbb", "aaaaaaa"}, // file-level change waits for all
+		"eeeeeee": {"ddddddd"},                       // d already orders after b
+	}
+	for id, w := range want {
+		if len(deps[id]) != len(w) {
+			t.Errorf("%s deps %v want %v", id, deps[id], w)
+			continue
+		}
+		for i := range w {
+			if deps[id][i] != w[i] {
+				t.Errorf("%s deps %v want %v", id, deps[id], w)
+			}
+		}
+	}
+	// File granularity orders every change to the file.
+	cfg.Planner.Granularity = "file"
+	for _, x := range []*state.Change{a, b, c, d, e} {
+		x.TaskID, x.Status = "", state.StatusAnalyzed
+	}
+	r = Plan([]*state.Change{a, b, c, d, e}, cfg)
+	if got := r.Tasks[1].DependsOn; len(got) != 1 || got[0] != "aaaaaaa" {
+		t.Fatalf("file mode b deps %v", got)
+	}
+}
