@@ -13,9 +13,9 @@ type Lines struct {
 
 // ParseUnifiedDiff extracts changed line numbers per file from a git diff
 // produced with -U0. Files are keyed by both their old and new paths.
-// Pure insertions mark the adjacent old line and pure deletions the
-// adjacent new line, so that changes inside a definition are attributed to
-// it on both sides.
+// Removed lines are attributed in the old file and added lines in the new
+// file; definitions are matched by name, so an edit inside a function is
+// attributed to it from whichever side has lines.
 func ParseUnifiedDiff(diff string) map[string]*Lines {
 	out := map[string]*Lines{}
 	var cur *Lines
@@ -44,19 +44,11 @@ func ParseUnifiedDiff(diff string) map[string]*Lines {
 			if !ok {
 				continue
 			}
-			if oc > 0 {
-				for i := 0; i < oc; i++ {
-					cur.Old = append(cur.Old, os+i)
-				}
-			} else if os > 0 {
-				cur.Old = append(cur.Old, os)
+			for i := 0; i < oc; i++ {
+				cur.Old = append(cur.Old, os+i)
 			}
-			if nc > 0 {
-				for i := 0; i < nc; i++ {
-					cur.New = append(cur.New, ns+i)
-				}
-			} else if ns > 0 {
-				cur.New = append(cur.New, ns)
+			for i := 0; i < nc; i++ {
+				cur.New = append(cur.New, ns+i)
 			}
 		}
 	}

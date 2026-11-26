@@ -62,9 +62,15 @@ func Changed(path string, oldSrc, newSrc []byte, oldLines, newLines []int) (*Fil
 		if err != nil {
 			return err
 		}
+		text := strings.Split(string(src), "\n")
 		for _, l := range lines {
 			s := innermost(syms, l)
 			if s == nil {
+				// Blank lines between definitions don't make a change
+				// top-level.
+				if l >= 1 && l <= len(text) && strings.TrimSpace(text[l-1]) == "" {
+					continue
+				}
 				fc.TopLevel = true
 				continue
 			}

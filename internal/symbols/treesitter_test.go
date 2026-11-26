@@ -69,6 +69,19 @@ func TestChangedInnermost(t *testing.T) {
 	}
 }
 
+func TestAppendedFunctionIsNotAttributedToItsNeighbor(t *testing.T) {
+	old := "package a\n\nfunc A() {\n}\n"
+	neu := "package a\n\nfunc A() {\n}\n\nfunc B() {\n}\n"
+	lines := ParseUnifiedDiff("diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -4,0 +5,3 @@\n")["a.go"]
+	fc, err := Changed("a.go", []byte(old), []byte(neu), lines.Old, lines.New)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(fc.Symbols, []string{"B"}) || fc.TopLevel {
+		t.Fatalf("%+v", fc)
+	}
+}
+
 func TestExcerpt(t *testing.T) {
 	src := []byte("package a\n\nfunc A() {\n\treturn\n}\n\nfunc B() {}\n\nfunc Z() {}\n")
 	syms, _ := Extract("a.go", src)

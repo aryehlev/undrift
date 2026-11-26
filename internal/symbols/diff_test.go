@@ -23,13 +23,13 @@ diff --git a/old.go b/renamed.go
 @@ -3,0 +4,2 @@
 `
 	got := ParseUnifiedDiff(d)
-	if l := got["auction/auction.go"]; !reflect.DeepEqual(l.Old, []int{5, 6, 20}) || !reflect.DeepEqual(l.New, []int{5, 6, 7, 21}) {
+	if l := got["auction/auction.go"]; !reflect.DeepEqual(l.Old, []int{5, 6, 20}) || !reflect.DeepEqual(l.New, []int{5, 6, 7}) {
 		t.Fatalf("auction: %+v", l)
 	}
 	if l := got["new.go"]; len(l.Old) != 0 || !reflect.DeepEqual(l.New, []int{1, 2, 3, 4}) {
 		t.Fatalf("new: %+v", l)
 	}
-	if got["old.go"] != got["renamed.go"] || !reflect.DeepEqual(got["renamed.go"].Old, []int{3}) {
+	if got["old.go"] != got["renamed.go"] || len(got["renamed.go"].Old) != 0 || !reflect.DeepEqual(got["renamed.go"].New, []int{4, 5}) {
 		t.Fatalf("rename: %+v", got["renamed.go"])
 	}
 }
