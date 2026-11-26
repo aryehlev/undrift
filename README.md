@@ -1,197 +1,212 @@
+<div align="center">
+
 # Undrift
 
 **Different code. Same behavior.**
 
-Undrift is an open-source, agent-agnostic synchronization engine. It keeps an
-independently evolving implementation (a cross-language port, a heavily
-modified fork, an SDK in another language, an alternative implementation of a
-protocol) up to date with its upstream project.
+Keep your port, fork or SDK in sync with the project it came from,<br>
+using the coding agent you already have.
 
-Git merge stops working once two codebases no longer share code. Undrift works
-on behavior instead: it discovers upstream changes, works out what each one
-does, hands it to the coding agent you choose as a structured task, verifies
-the result independently, and opens a pull request. It keeps a durable ledger
-of what has been synchronized, what was skipped, and why.
+[![CI](https://github.com/aryehlev/undrift/actions/workflows/ci.yml/badge.svg)](https://github.com/aryehlev/undrift/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/go-1.22+-00ADD8?logo=go&logoColor=white)](go.mod)
+[![License](https://img.shields.io/badge/license-Apache_2.0-blue)](LICENSE)
 
-> Port once. Stay in sync.
+[The problem](#the-problem) · [How it works](#how-it-works) · [Quick start](#quick-start) · [Docs](docs/)
 
-```
-upstream commits ──► scan ──► analyze ──► plan ──► agent implements ──► verify ──► PR ──► merged
-                     ledger   classify    deps     (Claude, Codex,      build,      draft if
-                              + policy    + order   Gemini, OpenCode,   tests,      partially
-                                                    any CLI)            regression, verified
-                                                                        diff, perf
-```
+<br>
 
-## Highlights
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
+  <img alt="Upstream commits flow through Undrift and arrive as verified pull requests on your port" src="docs/assets/hero-light.svg" width="100%">
+</picture>
 
-- **Bring your own agent.** Built-in adapters for Claude Code, Codex, Gemini CLI and OpenCode. Any other CLI agent is a few lines of YAML. External agents and loops can drive Undrift themselves through `next / claim / context / verify / complete`, or over MCP.
-- **Any language pair.** Mappings between upstream and downstream functionality are semantic and don't assume matching file names or structure. Tree-sitter symbol analysis (14 languages) records which functions, methods and types each upstream change touched. That makes `path#Symbol` mappings precise, finds function-level counterparts across naming conventions (`RunAuction` ↔ `run_auction`), and can order work per definition instead of per file. Other languages fall back to file level.
-- **Verification first.** An agent's report is never taken as proof. Undrift re-runs trusted downstream checks: build, existing tests, regression tests (fail before / pass after), differential testing against upstream, and performance thresholds. Results are reported as *verified*, *partially verified* or *unverified*. Partially verified work opens as a draft PR.
-- **Persistent memory.** Mappings, intentional deviations, conventions, rejected changes and past failures are kept in human-readable, version-controlled files and given to every agent.
-- **Architecture preservation.** Recorded deviations (for example "we use `FuturesUnordered` instead of a task per bidder") are injected into every relevant task. Agents are told to port behavior, not implementation.
-- **Durable and resumable.** Each change has a stable identity and a lifecycle in the ledger. Every operation is idempotent. Tasks are leased; crashed workers are recovered when their lease expires. Upstream history rewrites are detected and handled explicitly.
-- **Local-first.** No hosted service and no database. State is JSON files. CI runners share state through a git branch, and distributed workers coordinate through compare-and-swap lease refs on the git remote.
+</div>
 
-## Install
+<br>
+
+## The problem
+
+Porting a project is a one-time cost. **Keeping it ported is not.**
+
+The day you finish, your Rust rewrite of that Go service matches the
+original. Then upstream keeps shipping: a security patch on Monday, two bug
+fixes on Wednesday, a new feature on Friday. Each one has to be noticed,
+understood, re-implemented in a different language and architecture, and
+shown to be correct. Miss one, and your port quietly stops being the same
+software.
+
+The tools you'd usually reach for don't help:
+
+- **`git merge` can't.** There's no shared code to merge.
+- **Reading upstream's changelog doesn't scale.** It turns into a weekly chore that slips, and it usually slips first on the security fixes.
+- **Pointing a coding agent at upstream** gets code written, but leaves the hard parts unsolved:
+  - Which changes are already handled?
+  - What did you deliberately skip, and why?
+  - Which of your optimizations must not be undone?
+  - Does the result actually behave like upstream?
+  - Nothing remembers any of this for next week.
+
+So ports drift. Slowly at first, then all at once.
+
+## The idea
+
+Undrift is the missing **merge for codebases that no longer share code.** It
+synchronizes *behavior* rather than lines:
+
+> Every upstream change becomes a tracked item in a ledger. Each one is
+> understood, planned, implemented by your agent, **proven** by your own
+> tests, and delivered as a pull request you review. A change only counts as
+> synchronized once you merge it.
+
+It's the same problem for many kinds of project:
+
+| You maintain | Undrift keeps it current with |
+|---|---|
+| A port to another language | the original implementation |
+| A heavily modified fork | its upstream |
+| SDKs in several languages | the reference SDK |
+| An alternative implementation of a protocol or spec | the reference implementation |
+| A community edition, or an enterprise one | its counterpart |
+| A system mid-migration | the old system's fixes, until cut-over |
+
+## How it works
+
+| | Step | What happens |
+|---|---|---|
+| 🔭 | **Watch** | Records every new upstream change: merged PRs, commits, reverts, releases. Each one gets a stable identity, so nothing is processed twice. A rewritten upstream history is detected and handled explicitly. |
+| 🧠 | **Understand** | Classifies each change (security fix, bug fix, feature, refactor, …) with reasoning and a confidence score, and applies your policy. If Undrift isn't sure, it asks a human instead of skipping. |
+| 🗺️ | **Map** | Finds where the affected behavior lives in *your* code, down to individual functions, across naming conventions and languages (`ParseHeader` ↔ `parse_header`). |
+| 🧩 | **Plan** | Orders dependent changes and runs independent ones in parallel. Work stacks on unmerged dependencies, so one stuck change doesn't hold up the rest. |
+| 🤖 | **Delegate** | Hands your agent a precise brief in an isolated worktree: the upstream diff, the relevant code on both sides, your architectural rules, past decisions, and what went wrong on earlier attempts. |
+| ✅ | **Prove** | Re-runs *your* checks itself and never trusts the agent's word. That means build and tests, a new regression test that must fail before the change and pass after, an optional differential test against upstream, and performance budgets. |
+| 📬 | **Propose** | Opens a pull request (or GitLab merge request) with the upstream links, what changed and why, how the port differs, and the verification table. Incomplete verification means a draft. |
+
+## Why not just ask an agent?
+
+Do ask an agent. Undrift is built around one. What it adds is everything
+around the code:
+
+| | Agent on its own | Agent driven by Undrift |
+|---|:---:|:---:|
+| Writes the code | ✅ | ✅ |
+| Knows which upstream changes are already done | ❌ | ✅ ledger |
+| Never duplicates work or PRs | ❌ | ✅ idempotent |
+| Remembers what was skipped, and why | ❌ | ✅ decision history |
+| Leaves your deliberate optimizations alone | 🤞 | ✅ recorded deviations |
+| Proven with tests that fail before and pass after | 🤞 | ✅ independently verified |
+| Survives crashes, timeouts and restarts | ❌ | ✅ leases and recovery |
+| Treats upstream text as untrusted | 🤞 | ✅ fenced and sandboxed |
+| Works with a different agent next month | ❌ | ✅ agent-agnostic |
+
+## Quick start
 
 ```sh
 go install github.com/aryehlev/undrift/cmd/undrift@latest
 ```
 
-Requires Go 1.22+, git and a C compiler (for the Tree-sitter grammars). `CGO_ENABLED=0 go install ...` builds without one, but symbol analysis is then off. Install the agent CLI you want to use (`claude`, `codex`, `gemini`, `opencode`, ...) separately.
-
-## Quick start
-
-Run these commands inside the downstream repository:
+Run these inside your port's repository:
 
 ```sh
-# 1. Point Undrift at the upstream. The baseline is the upstream revision your
-#    port currently matches (default: today's upstream head).
+# 1. Point Undrift at upstream, and say which upstream version you match today.
 undrift init --upstream https://github.com/org/project --baseline v1.4.0 \
              --verify "cargo build --locked" --verify "cargo test --locked"
 
-# 2. Discover, classify and plan upstream changes since the baseline.
-undrift scan
-undrift analyze            # heuristic; add --agent claude for semantic analysis
-undrift plan
+# 2. Let it catch up. It finds, classifies, plans, implements, verifies and opens PRs.
+export GITHUB_TOKEN=...          # or GITLAB_TOKEN
+undrift run --agent claude       # or codex, gemini, opencode, or your own
 
-# 3. Let an agent implement, verify and open PRs.
-export GITHUB_TOKEN=...    # to open PRs (GITLAB_TOKEN for GitLab merge requests)
-undrift sync --agent claude
-
+# 3. See where things stand.
 undrift status
 ```
 
-`undrift run --agent claude` runs all four steps in one go.
+To keep it running on a schedule, run `undrift integrations install github-actions`.
 
-## How it works
+## Your agent, your infrastructure
 
-| Stage | What happens |
+**Agents.** Claude Code, Codex, Gemini CLI and OpenCode work out of the box.
+Anything else that can edit a repository takes about four lines of YAML. You
+can also flip the model around and let your own agent loop drive Undrift with
+`next → claim → context → verify → complete`, or use the MCP server
+(`undrift mcp`).
+
+**Where it runs.** On your laptop, in GitHub Actions, GitLab CI, Jenkins, cron,
+Kubernetes, or a Claude Code `/loop`. All of them share the same state.
+
+**No lock-in.** There's no hosted service and no database. State is plain
+files in your repository. Your project knowledge (mappings, deliberate
+deviations, conventions) lives in reviewable YAML. On CI, the ledger rides
+along on a git branch, and multi-machine workers coordinate through atomic
+git refs.
+
+## Built for trust
+
+**🛡️ Upstream is untrusted.** Commit messages, PR text and diffs reach agents
+only inside fenced blocks, and agents are told never to follow instructions
+inside them. Upstream code is never executed unless you explicitly enable
+differential testing.
+
+**🔐 Least privilege.** Agents get a minimal environment; your tokens are
+never forwarded by default. Each task runs in its own worktree with a
+timeout, and you can wrap agents and checks in any sandbox
+(`bwrap`, `firejail`, `docker run …`).
+
+**🧑‍⚖️ You decide.** Low-confidence calls go to review, auto-merge is off by
+default, and every decision is recorded with who made it and why.
+
+```sh
+undrift skip    a1b2c3 --reason "Not applicable to the Rust port"
+undrift approve a1b2c3                     # overrides policy or a review hold
+undrift deviations add --upstream internal/cache/lru.go --downstream src/cache.rs \
+    --reason "Sharded lock-free map instead of a mutex-guarded LRU" --preserve "No global lock"
+```
+
+**💸 Bounded cost.** Every run is capped by changes per run, attempts per
+change, timeouts and an optional dollar budget.
+
+<details>
+<summary><b>Command reference</b></summary>
+
+| Command | Purpose |
 |---|---|
-| **scan** | Fetches the upstream into a local mirror and records each new *logical* change (first-parent history, so a merged PR or squash commit is one change) in the ledger, with its PR number, tags, patch ID and revert target. Include/exclude/ignore rules are applied, and filtered changes are still recorded with the reason. |
-| **analyze** | Classifies each change (security fix, bug fix, feature, performance, breaking change, refactoring, dependency update, test, docs, language-specific, already implemented, not applicable, needs review) with reasoning, evidence and a confidence score, then applies your `sync:` policy. Low-confidence decisions go to human review instead of being skipped. |
-| **plan** | Builds tasks and a dependency graph from file overlap, reverts and analysis. Unrelated changes run in parallel. Dependent ones run in order and can *stack* on an unmerged dependency's branch. A blocked change doesn't hold up unrelated work. |
-| **sync** | Claims ready tasks under a lease, creates an isolated git worktree for each, and gives the agent a task contract: upstream diff and source, relevant downstream code, mappings, deviations, rules, past decisions and past failed attempts, acceptance criteria and an output schema. |
-| **verify** | Re-runs the configured downstream checks on the agent's work. A failure feeds back into the next attempt, up to `max_attempts_per_change`. |
-| **PR** | Squashes the work into one commit with `Upstream-Change:` trailers and opens (or updates, never duplicates) a PR. The PR includes upstream links, an explanation, the implementation summary, architectural differences, the verification table, tests added, limitations and confidence. |
-| **reconcile** | Detects merged or closed PRs. A change counts as **synchronized only once it is merged**. |
+| `init` | Create `undrift.yaml` and project memory |
+| `scan` · `analyze` · `plan` | Discover, classify and plan upstream changes |
+| `sync` · `run` · `watch` | Let an agent implement ready work (once, end to end, or continuously) |
+| `next` · `claim` · `context` · `verify` · `complete` | External-agent workflow |
+| `status` · `changes` · `inspect` · `history` · `report` | Visibility |
+| `skip` · `approve` · `resolve` · `retry` | Human decisions |
+| `mappings` · `deviations` · `notes` | Project memory |
+| `state pull/push` · `reconcile` · `publish` | CI persistence and PR lifecycle |
+| `integrations install` · `mcp` · `schema` | Integrations |
 
-Each change moves through: `discovered → analyzed → planned → in_progress → verified → pr_opened → merged`. Side states are `waiting_dependency`, `blocked`, `failed`, `needs_review`, `already_implemented`, `not_applicable`, `skipped`, `reverted` and `superseded`.
+Every command accepts `--format json`. Exit codes: `0` ok · `3` nothing to do
+· `4` verification failed · `5` leased by another worker · `6` needs review ·
+`7` config error · `8` upstream history rewritten.
 
-## Two ways to run agents
-
-**Managed:** Undrift launches the agent.
-
-```sh
-undrift sync --agent claude      # or codex, gemini, opencode, or your own
-undrift sync --change abc123     # one specific change
-```
-
-**External:** your agent, loop or orchestrator drives Undrift. Both models share the same state.
-
-```sh
-undrift next --format json                    # exit 3 = nothing to do
-undrift claim TASK_ID --format json           # → workdir, prompt_file, result_file, token
-undrift context TASK_ID                       # Markdown task (or --format json)
-undrift verify TASK_ID --token TOKEN
-undrift complete TASK_ID --token TOKEN --result result.json
-```
-
-The same workflow is available as MCP tools through `undrift mcp`. See [docs/agent-contract.md](docs/agent-contract.md) for the task and result schemas.
-
-### Adding your own agent
-
-```yaml
-agents:
-  my-agent:
-    command: my-agent
-    args: ["run", "--instructions", "{{prompt_file}}", "--cwd", "{{workdir}}"]
-    prompt: none          # or stdin (default)
-    env: ["MY_AGENT_*"]   # only these variables (plus a minimal base set) are passed through
-```
-
-The agent works in `{{workdir}}` and writes its result JSON to `$UNDRIFT_RESULT_FILE`. You can also override built-in presets here when an agent CLI changes its flags.
-
-## Human control
-
-```sh
-undrift inspect abc123                          # reasoning, evidence, attempts, PR
-undrift skip abc123 --reason "Not applicable to the Rust port"
-undrift approve abc123                          # override the policy or a review hold
-undrift resolve abc123 --as already_implemented --reason "Fixed in #88"
-undrift retry abc123                            # fresh attempt budget
-undrift history                                 # every decision, who made it, and why
-undrift mappings add --upstream auction/auction.go#RunAuction \
-                     --downstream src/auction/engine.rs#execute \
-                     --relationship "Execute an auction and collect bidder responses"
-undrift deviations add --upstream auction/auction.go --downstream src/auction/engine.rs \
-                       --reason "FuturesUnordered instead of a task per bidder" \
-                       --preserve "Single-task execution" --preserve "Zero-copy request handling"
-undrift notes add --kind convention --text "Errors are thiserror enums"
-```
-
-Mappings and notes that agents propose are committed on the PR branch, so they reach your main branch only through review. Agents can never overwrite mappings marked `source: human`.
-
-## Running it continuously
-
-- **GitHub Actions:** run `undrift integrations install github-actions`, then add your agent's API key as a repository secret. The workflow uses this repository's [`action.yml`](action.yml). The action builds Undrift, installs the agent CLI, restores the ledger from the `undrift/state` branch, runs the pipeline, persists state and writes a job summary.
-
-  ```yaml
-  - uses: aryehlev/undrift@main
-    with:
-      agent: codex
-      max-changes: 10
-    env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  ```
-
-- **Claude Code:** run `undrift integrations install claude` to add a project skill. You can also install the plugin, which bundles the skill and the MCP server: `/plugin marketplace add aryehlev/undrift`. For a recurring loop: `/loop 30m Run Undrift, discover upstream changes, implement pending synchronization tasks, verify them, and open pull requests.`
-- **Codex / OpenCode / Gemini:** run `undrift integrations install codex` (or `opencode`, `gemini`) to add an Undrift section to `AGENTS.md` / `GEMINI.md`.
-- **GitLab CI:** run `undrift integrations install gitlab-ci`, schedule the job, and set `GITLAB_TOKEN` plus your agent's API key as CI/CD variables. Merge requests are opened on gitlab.com or a self-managed instance.
-- **Anything else:** `undrift run` under cron, Jenkins or a Kubernetes CronJob. `undrift watch` loops locally.
-
-For multiple machines, set `state.lease: git`. Leases then become refs on the downstream remote, updated with compare-and-swap pushes, so workers that share only the git remote never take the same task. Use `undrift state pull` / `undrift state push` to share the ledger through the `undrift/state` branch.
-
-## Security model
-
-Upstream content is untrusted. It can include prompt injection, malicious scripts or poisoned dependencies.
-
-- Upstream text reaches agents only inside `<untrusted-upstream-content>` fences. Attempts to close a fence early are neutralized, and agents are told never to follow instructions inside one.
-- Verification commands come only from the downstream `undrift.yaml` that was loaded at startup. Agent edits to `undrift.yaml` and `.undrift/` are discarded before verification.
-- Agents and checks run with a minimal environment: `PATH`, `HOME`, locale, proxy and toolchain caches, plus the variables you name explicitly. `GITHUB_TOKEN` and other credentials are never forwarded by default.
-- Each task runs in its own worktree, in its own process group, with a timeout. Set `security.sandbox` to wrap every agent and check (for example `["bwrap", ...]`, `["firejail", "--net=none"]` or a `docker run` prefix).
-- Undrift never executes upstream code, except in differential testing, which requires `security.allow_upstream_execution: true`.
-- Costs are bounded by `limits.max_changes_per_run`, `limits.max_cost_usd`, agent timeouts and attempt limits.
-- Upstream PR text in downstream PR bodies is sanitized so it can't `@`-mention people.
-
-## Exit codes
-
-| Code | Meaning |
-|---|---|
-| 0 | success |
-| 1 | unexpected error |
-| 2 | invalid usage |
-| 3 | nothing to do |
-| 4 | verification failed |
-| 5 | task leased by another worker |
-| 6 | human review required |
-| 7 | configuration missing or invalid |
-| 8 | upstream history rewrite detected (`scan --accept-rewrite`) |
-
-Every command accepts `--format json`. Errors in JSON mode are `{"ok": false, "error": "...", "exit_code": N}`.
-
-## Documentation
-
-- [Configuration reference](docs/configuration.md)
-- [Agent task contract](docs/agent-contract.md)
-- [Architecture and state model](docs/architecture.md)
-- [Annotated example configuration](examples/undrift.yaml)
+</details>
 
 ## Status
 
-This is an early MVP. Pull requests are supported on GitHub (including Enterprise) and GitLab (including self-managed). With other hosts, set `pull_requests.provider: none` and Undrift pushes verified branches for review. Symbol analysis uses Tree-sitter. A language-server resolver, for references and types across a whole project, can plug into `mapping.Resolver` later.
+Undrift is an **early MVP**, usable and tested end to end. Today it has:
 
-## License
+- pull requests on GitHub (including Enterprise) and GitLab (including self-managed);
+- symbol-level analysis for 14 languages through Tree-sitter.
 
-Apache 2.0. See [LICENSE](LICENSE).
+On the roadmap:
+
+- language-server resolvers for references and types;
+- Gitea, Forgejo and Bitbucket providers;
+- richer differential-testing harnesses.
+
+Issues and ideas are very welcome.
+
+## Learn more
+
+- [Configuration reference](docs/configuration.md) and an [annotated example](examples/undrift.yaml)
+- [Agent task contract](docs/agent-contract.md): what agents receive and must return
+- [Architecture](docs/architecture.md): ledger, lifecycle, concurrency, symbol analysis
+
+<br>
+
+<div align="center">
+<sub>Apache 2.0 · Port once. Stay in sync.</sub>
+</div>

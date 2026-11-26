@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="380" viewBox="0 0 1000 380" role="img" aria-label="Upstream commits flow through Undrift and arrive as verified pull requests on your port">
+<rect width="1000" height="380" rx="16" fill="#0d1117"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#6e7681"/></marker></defs>
+<text x="32" y="46" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="12" font-weight="600" letter-spacing="1.4" fill="#8d96a0">UPSTREAM</text>
+<text x="32" y="68" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="15" font-weight="600" fill="#e6edf3">The original project keeps shipping</text>
+<rect x="32" y="96" width="300" height="50" rx="10" fill="#161b22" stroke="#30363d"/>
+<circle cx="52" cy="121" r="5" fill="#ff7b72"/>
+<text x="66" y="117" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace" font-size="12" fill="#e6edf3">fix(security): sanitize headers</text>
+<text x="66" y="135" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="11" fill="#ff7b72" font-weight="600">security</text>
+<rect x="32" y="160" width="300" height="50" rx="10" fill="#161b22" stroke="#30363d"/>
+<circle cx="52" cy="185" r="5" fill="#d29922"/>
+<text x="66" y="181" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace" font-size="12" fill="#e6edf3">fix: release lock on retry timeout</text>
+<text x="66" y="199" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="11" fill="#d29922" font-weight="600">bug fix</text>
+<rect x="32" y="224" width="300" height="50" rx="10" fill="#161b22" stroke="#30363d"/>
+<circle cx="52" cy="249" r="5" fill="#58a6ff"/>
+<text x="66" y="245" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace" font-size="12" fill="#e6edf3">feat: streaming responses</text>
+<text x="66" y="263" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="11" fill="#58a6ff" font-weight="600">feature</text>
+<rect x="32" y="288" width="300" height="50" rx="10" fill="#161b22" stroke="#30363d"/>
+<circle cx="52" cy="313" r="5" fill="#8d96a0"/>
+<text x="66" y="309" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace" font-size="12" fill="#e6edf3">docs: rewrite the setup guide</text>
+<text x="66" y="327" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="11" fill="#8d96a0" font-weight="600">docs</text>
+<rect x="392" y="96" width="216" height="242" rx="14" fill="#e6edf3"/>
+<text x="500.0" y="132" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="20" font-weight="700" fill="#0d1117">undrift</text>
+<circle cx="420" cy="158" r="4" fill="none" stroke="#0d1117" stroke-width="1.5"/>
+<line x1="420" y1="163" x2="420" y2="187" stroke="#57606a" stroke-width="1.5"/>
+<text x="436" y="162" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#0d1117">understand</text>
+<text x="436" y="177" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">what changed, and why</text>
+<circle cx="420" cy="192" r="4" fill="none" stroke="#0d1117" stroke-width="1.5"/>
+<line x1="420" y1="197" x2="420" y2="221" stroke="#57606a" stroke-width="1.5"/>
+<text x="436" y="196" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#0d1117">plan</text>
+<text x="436" y="211" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">order, dependencies</text>
+<circle cx="420" cy="226" r="4" fill="none" stroke="#0d1117" stroke-width="1.5"/>
+<line x1="420" y1="231" x2="420" y2="255" stroke="#57606a" stroke-width="1.5"/>
+<text x="436" y="230" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#0d1117">delegate</text>
+<text x="436" y="245" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">to your coding agent</text>
+<circle cx="420" cy="260" r="4" fill="none" stroke="#0d1117" stroke-width="1.5"/>
+<line x1="420" y1="265" x2="420" y2="289" stroke="#57606a" stroke-width="1.5"/>
+<text x="436" y="264" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#0d1117">verify</text>
+<text x="436" y="279" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">tests, regressions, perf</text>
+<circle cx="420" cy="294" r="4" fill="none" stroke="#0d1117" stroke-width="1.5"/>
+<text x="436" y="298" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#0d1117">propose</text>
+<text x="436" y="313" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">a PR you review</text>
+<path d="M334 121 C 362 121, 362 217.0, 388 217.0" fill="none" stroke="#6e7681" stroke-width="1.5" marker-end="url(#a)" opacity="0.8"/>
+<path d="M334 185 C 362 185, 362 217.0, 388 217.0" fill="none" stroke="#6e7681" stroke-width="1.5" marker-end="url(#a)" opacity="0.8"/>
+<path d="M334 249 C 362 249, 362 217.0, 388 217.0" fill="none" stroke="#6e7681" stroke-width="1.5" marker-end="url(#a)" opacity="0.8"/>
+<path d="M334 313 C 362 313, 362 217.0, 388 217.0" fill="none" stroke="#6e7681" stroke-width="1.5" marker-end="url(#a)" opacity="0.8"/>
+<text x="668" y="46" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="12" font-weight="600" letter-spacing="1.4" fill="#8d96a0">YOUR PORT</text>
+<text x="668" y="68" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="15" font-weight="600" fill="#e6edf3">Different code, kept in sync</text>
+<path d="M612 217.0 C 640 217.0, 640 121, 664 121" fill="none" stroke="#6e7681" stroke-width="1.5" marker-end="url(#a)" opacity="0.8"/>
+<g><rect x="668" y="96" width="300" height="50" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="684" y="117" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#e6edf3">Port header sanitization</text>
+<rect x="684" y="124" width="59" height="16" rx="8" fill="#12261e"/>
+<text x="714" y="136" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#3fb950">verified</text></g>
+<path d="M612 217.0 C 640 217.0, 640 185, 664 185" fill="none" stroke="#6e7681" stroke-width="1.5" marker-end="url(#a)" opacity="0.8"/>
+<g><rect x="668" y="160" width="300" height="50" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="684" y="181" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#e6edf3">Port lock release on retry timeout</text>
+<rect x="684" y="188" width="59" height="16" rx="8" fill="#12261e"/>
+<text x="714" y="200" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#3fb950">verified</text></g>
+<path d="M612 217.0 C 640 217.0, 640 249, 664 249" fill="none" stroke="#6e7681" stroke-width="1.5" marker-end="url(#a)" opacity="0.8"/>
+<g><rect x="668" y="224" width="300" height="50" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="684" y="245" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#e6edf3">Port streaming responses</text>
+<rect x="684" y="252" width="104" height="16" rx="8" fill="#2b2111"/>
+<text x="736" y="264" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#d29922">draft · partial</text></g>
+<path d="M612 217.0 C 640 217.0, 640 313, 664 313" fill="none" stroke="#6e7681" stroke-width="1.5" marker-end="url(#a)" opacity="0.8"/>
+<g opacity="0.6"><rect x="668" y="288" width="300" height="50" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="684" y="309" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#e6edf3">docs: rewrite the setup guide</text>
+<rect x="684" y="316" width="117" height="16" rx="8" fill="#21262d"/>
+<text x="742" y="328" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#8d96a0">skipped by policy</text></g>
+</svg>
